@@ -22,6 +22,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 
 import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.reflect.MethodSignature;
 
 import com.google.code.ssm.aop.support.AnnotationData;
 import com.google.code.ssm.aop.support.AnnotationDataBuilder;
@@ -33,60 +34,82 @@ import com.google.code.ssm.api.format.SerializationType;
  * @author Jakub Białek
  * @since 2.0.0
  * 
- * @param <T>
- *            the type of SSM read from cache annotation
+ * @param <T> the type of SSM read from cache annotation
  */
 abstract class SingleReadCacheAdvice<T extends Annotation> extends CacheAdvice {
 
-    private final Class<T> annotationClass;
+	private final Class<T> annotationClass;
 
-    protected SingleReadCacheAdvice(final Class<T> annotationClass) {
-        this.annotationClass = annotationClass;
-    }
+	protected SingleReadCacheAdvice(final Class<T> annotationClass) {
+		this.annotationClass = annotationClass;
+	}
 
-    protected Object cache(final ProceedingJoinPoint pjp) throws Throwable {
-        if (isDisabled()) {
-            getLogger().info("Cache disabled");
-            return pjp.proceed();
-        }
-        // This is injected caching. If anything goes wrong in the caching, LOG
-        // the crap outta it, but do not let it surface up past the AOP injection itself.
-        final T annotation;
-        final AnnotationData data;
-        final SerializationType serializationType;
-        String cacheKey = null;
-        try {
-            final Method methodToCache = getCacheBase().getMethodToCache(pjp);
-            getCacheBase().verifyReturnTypeIsNoVoid(methodToCache, annotationClass);
-            annotation = methodToCache.getAnnotation(annotationClass);
-            serializationType = getCacheBase().getSerializationType(methodToCache);
-            data = AnnotationDataBuilder.buildAnnotationData(annotation, annotationClass, methodToCache);
+	protected Object cache(final ProceedingJoinPoint pjp) throws Throwable {
+		if (isDisabled()) {
+			getLogger().info("Cache disabled");
+			return pjp.proceed();
+		}
+		// This is injected caching. If anything goes wrong in the caching, LOG
+		// the crap outta it, but do not let it surface up past the AOP injection
+		// itself.
+		final T annotation;
+		final AnnotationData data;
+		final SerializationType serializationType;
+		String cacheKey = null;
+		try {
+			final Method methodToCache = getCacheBase().getMethodToCache(pjp);
+			getCacheBase().verifyReturnTypeIsNoVoid(methodToCache, annotationClass);
 
-            cacheKey = getCacheKey(data, pjp.getArgs(), methodToCache.toString());
+			T at = methodToCache.getAnnotation(annotationClass);
+			if (at == null) {
+				final MethodSignature msig = (MethodSignature) pjp.getSignature();
+				String name = msig.getName();
+				Class<?>[] parameters = msig.getParameterTypes();
 
-            final Object result = getCacheBase().getCache(data).get(cacheKey, serializationType);
-            if (result != null) {
-                getLogger().debug("Cache hit.");
-                return getCacheBase().getResult(result);
-            }
-        } catch (Exception ex) {
-            warn(ex, "Caching on method %s and key [%s] aborted due to an error.", pjp.toShortString(), cacheKey);
-            return pjp.proceed();
-        }
+				for (Class<?> clz : pjp.getTarget().getClass().getInterfaces()) {
+					Method m = clz.getMethod(name, parameters);
+					if (m == null) {
+						continue;
+					}
+					at = m.getAnnotation(annotationClass);
+					System.out.println(clz + ", " + m + ", " + at);
+					if (at != null) {
+						break;
+					}
+				}
+			}
 
-        final Object result = pjp.proceed();
+			annotation = at;
+			serializationType = getCacheBase().getSerializationType(methodToCache);
+			data = AnnotationDataBuilder.buildAnnotationData(annotation, annotationClass, methodToCache);
 
-        // This is injected caching. If anything goes wrong in the caching, LOG
-        // the crap outta it, but do not let it surface up past the AOP injection itself.
-        try {
-            final Object submission = getCacheBase().getSubmission(result);
-            getCacheBase().getCache(data).set(cacheKey, data.getExpiration(), submission, serializationType);
-        } catch (Exception ex) {
-            warn(ex, "Caching on method %s and key [%s] aborted due to an error.", pjp.toShortString(), cacheKey);
-        }
-        return result;
-    }
+			cacheKey = getCacheKey(data, pjp.getArgs(), methodToCache.toString());
 
-    protected abstract String getCacheKey(final AnnotationData data, final Object[] args, final String methodDesc) throws Exception;
+			final Object result = getCacheBase().getCache(data).get(cacheKey, serializationType);
+			if (result != null) {
+				getLogger().debug("Cache hit.");
+				return getCacheBase().getResult(result);
+			}
+		} catch (Exception ex) {
+			warn(ex, "Caching on method %s and key [%s] aborted due to an error.", pjp.toShortString(), cacheKey);
+			return pjp.proceed();
+		}
+
+		final Object result = pjp.proceed();
+
+		// This is injected caching. If anything goes wrong in the caching, LOG
+		// the crap outta it, but do not let it surface up past the AOP injection
+		// itself.
+		try {
+			final Object submission = getCacheBase().getSubmission(result);
+			getCacheBase().getCache(data).set(cacheKey, data.getExpiration(), submission, serializationType);
+		} catch (Exception ex) {
+			warn(ex, "Caching on method %s and key [%s] aborted due to an error.", pjp.toShortString(), cacheKey);
+		}
+		return result;
+	}
+
+	protected abstract String getCacheKey(final AnnotationData data, final Object[] args, final String methodDesc)
+			throws Exception;
 
 }
