@@ -57,7 +57,7 @@ abstract class SingleReadCacheAdvice<T extends Annotation> extends CacheAdvice {
 		final SerializationType serializationType;
 		String cacheKey = null;
 		try {
-			final Method methodToCache = getCacheBase().getMethodToCache(pjp);
+			Method methodToCache = getCacheBase().getMethodToCache(pjp);
 			getCacheBase().verifyReturnTypeIsNoVoid(methodToCache, annotationClass);
 
 			T at = methodToCache.getAnnotation(annotationClass);
@@ -72,8 +72,8 @@ abstract class SingleReadCacheAdvice<T extends Annotation> extends CacheAdvice {
 						continue;
 					}
 					at = m.getAnnotation(annotationClass);
-					System.out.println(clz + ", " + m + ", " + at);
 					if (at != null) {
+						methodToCache = m;
 						break;
 					}
 				}
@@ -87,7 +87,7 @@ abstract class SingleReadCacheAdvice<T extends Annotation> extends CacheAdvice {
 
 			final Object result = getCacheBase().getCache(data).get(cacheKey, serializationType);
 			if (result != null) {
-				getLogger().debug("Cache hit.");
+				getLogger().debug("Cache hit(key=" + cacheKey + ").");
 				return getCacheBase().getResult(result);
 			}
 		} catch (Exception ex) {

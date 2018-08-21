@@ -56,187 +56,193 @@ import com.google.code.ssm.util.Utils;
  */
 public class CacheBase implements ApplicationContextAware, InitializingBean {
 
-    public static final String DISABLE_CACHE_PROPERTY = "ssm.cache.disable";
+	public static final String DISABLE_CACHE_PROPERTY = "ssm.cache.disable";
 
-    private static final Logger LOG = LoggerFactory.getLogger(CacheBase.class);
+	private static final Logger LOG = LoggerFactory.getLogger(CacheBase.class);
 
-    private CacheKeyBuilder cacheKeyBuilder = new CacheKeyBuilderImpl();
+	private CacheKeyBuilder cacheKeyBuilder = new CacheKeyBuilderImpl();
 
-    private BridgeMethodMappingStore bridgeMethodMappingStore = new BridgeMethodMappingStoreImpl();
+	private BridgeMethodMappingStore bridgeMethodMappingStore = new BridgeMethodMappingStoreImpl();
 
-    // mapping cache zone <-> cache
-    private final Map<String, Cache> caches = new HashMap<String, Cache>();
+	// mapping cache zone <-> cache
+	private final Map<String, Cache> caches = new HashMap<String, Cache>();
 
-    private Settings settings = new Settings();
+	private Settings settings = new Settings();
 
-    private ApplicationContext context;
+	private ApplicationContext context;
 
-    @Override
-    public void afterPropertiesSet() throws Exception {
-    	try {
-            settings = context.getBean(Settings.class);
-        } catch (NoSuchBeanDefinitionException ex) {
-            LOG.info("Cannot obtain custom SSM settings, default is used");
-        }
-    	
-        for (Cache cache : context.getBeansOfType(Cache.class).values()) {
-            addCache(cache);
-        }        
-    }
+	@Override
+	public void afterPropertiesSet() throws Exception {
+		try {
+			settings = context.getBean(Settings.class);
+		} catch (NoSuchBeanDefinitionException ex) {
+			LOG.info("Cannot obtain custom SSM settings, default is used");
+		}
 
-    @Override
-    public void setApplicationContext(final ApplicationContext applicationContext) {
-        this.context = applicationContext;
-    }
+		for (Cache cache : context.getBeansOfType(Cache.class).values()) {
+			addCache(cache);
+		}
+	}
 
-    public void setCacheKeyBuilder(final CacheKeyBuilder cacheKeyBuilder) {
-        this.cacheKeyBuilder = cacheKeyBuilder;
-    }
+	@Override
+	public void setApplicationContext(final ApplicationContext applicationContext) {
+		this.context = applicationContext;
+	}
 
-    public CacheKeyBuilder getCacheKeyBuilder() {
-        return this.cacheKeyBuilder;
-    }
+	public void setCacheKeyBuilder(final CacheKeyBuilder cacheKeyBuilder) {
+		this.cacheKeyBuilder = cacheKeyBuilder;
+	}
 
-    public BridgeMethodMappingStore getBridgeMethodMappingStore() {
-        return bridgeMethodMappingStore;
-    }
+	public CacheKeyBuilder getCacheKeyBuilder() {
+		return this.cacheKeyBuilder;
+	}
 
-    public void setBridgeMethodMappingStore(final BridgeMethodMappingStore bridgeMethodMappingStore) {
-        this.bridgeMethodMappingStore = bridgeMethodMappingStore;
-    }
+	public BridgeMethodMappingStore getBridgeMethodMappingStore() {
+		return bridgeMethodMappingStore;
+	}
 
-    public Cache getCache(final AnnotationData data) {
-        Cache cache = caches.get(data.getCacheName());
-        if (cache == null) {
-            throw new UndefinedCacheException(data.getCacheName());
-        }
+	public void setBridgeMethodMappingStore(final BridgeMethodMappingStore bridgeMethodMappingStore) {
+		this.bridgeMethodMappingStore = bridgeMethodMappingStore;
+	}
 
-        if (cache.getProperties().isUseNameAsKeyPrefix()) {
-            return new PrefixedCacheImpl(cache, data.getCacheName(), cache.getProperties().getKeyPrefixSeparator());
-        }
+	public Cache getCache(final AnnotationData data) {
+		Cache cache = caches.get(data.getCacheName());
+		if (cache == null) {
+			throw new UndefinedCacheException(data.getCacheName());
+		}
 
-        return cache;
-    }
+		if (cache.getProperties().isUseNameAsKeyPrefix()) {
+			return new PrefixedCacheImpl(cache, data.getCacheName(), cache.getProperties().getKeyPrefixSeparator());
+		}
 
-    public boolean isCacheDisabled() {
-        String disableProperty = System.getProperty(DISABLE_CACHE_PROPERTY);
-        return Boolean.toString(true).equals(disableProperty) || !Boolean.toString(false).equals(disableProperty)
-                && settings.isDisableCache();
-    }
+		return cache;
+	}
 
-    public Method getMethodToCache(final JoinPoint jp) throws NoSuchMethodException {
-        final Signature sig = jp.getSignature();
-        if (!(sig instanceof MethodSignature)) {
-            throw new InvalidAnnotationException("This annotation is only valid on a method.");
-        }
+	public boolean isCacheDisabled() {
+		String disableProperty = System.getProperty(DISABLE_CACHE_PROPERTY);
+		return Boolean.toString(true).equals(disableProperty)
+				|| !Boolean.toString(false).equals(disableProperty) && settings.isDisableCache();
+	}
 
-        final MethodSignature msig = (MethodSignature) sig;
-        final Object target = jp.getTarget();
+	public Method getMethodToCache(final JoinPoint jp) throws NoSuchMethodException {
+		final Signature sig = jp.getSignature();
+		if (!(sig instanceof MethodSignature)) {
+			throw new InvalidAnnotationException("This annotation is only valid on a method.");
+		}
 
-        // cannot use msig.getMethod() because it can return the method where annotation was declared i.e. method in
-        // interface
-        String name = msig.getName();
-        Class<?>[] parameters = msig.getParameterTypes();
+		final MethodSignature msig = (MethodSignature) sig;
+		final Object target = jp.getTarget();
 
-        Method method = findMethodFromTargetGivenNameAndParams(target, name, parameters);
+		// cannot use msig.getMethod() because it can return the method where annotation
+		// was declared i.e. method in
+		// interface
+		String name = msig.getName();
+		Class<?>[] parameters = msig.getParameterTypes();
 
-        if (method.isBridge()) {
-            if (getLogger().isDebugEnabled()) {
-                getLogger().debug("Method is bridge. Name {}, params: {}", name, parameters);
-            }
+		Method method = findMethodFromTargetGivenNameAndParams(target, name, parameters);
 
-            parameters = bridgeMethodMappingStore.getTargetParamsTypes(target.getClass(), name, parameters);
-            method = findMethodFromTargetGivenNameAndParams(target, name, parameters);
-        }
+		if (method.isBridge()) {
+			if (getLogger().isDebugEnabled()) {
+				getLogger().debug("Method is bridge. Name {}, params: {}", name, parameters);
+			}
 
-        return method;
-    }
+			parameters = bridgeMethodMappingStore.getTargetParamsTypes(target.getClass(), name, parameters);
+			method = findMethodFromTargetGivenNameAndParams(target, name, parameters);
+		}
 
-    @SuppressWarnings("unchecked")
-    public <T> T getUpdateData(final AnnotationData data, final Method method, final Object[] args, final Object returnValue)
-            throws Exception {
-        return data.isReturnDataIndex() ? (T) returnValue : (T) Utils.getMethodArg(data.getDataIndex(), args, method.toString());
-    }
+		return method;
+	}
 
-    protected Settings getSettings() {
-        return settings;
-    }
+	@SuppressWarnings("unchecked")
+	public <T> T getUpdateData(final AnnotationData data, final Method method, final Object[] args,
+			final Object returnValue) throws Exception {
+		return data.isReturnDataIndex() ? (T) returnValue
+				: (T) Utils.getMethodArg(data.getDataIndex(), args, method.toString());
+	}
 
-    protected Object getSubmission(final Object o) {
-        return (o == null) ? PertinentNegativeNull.NULL : o;
-    }
+	protected Settings getSettings() {
+		return settings;
+	}
 
-    protected Object getResult(final Object result) {
-        return (result instanceof PertinentNegativeNull) ? null : result;
-    }
+	protected Object getSubmission(final Object o) {
+		return (o == null) ? PertinentNegativeNull.NULL : o;
+	}
 
-    protected void verifyReturnTypeIsList(final Method method, final Class<?> annotationClass) {
-        if (!verifyTypeIsList(method.getReturnType())) {
-            throw new InvalidAnnotationException(
-                    String.format("The annotation [%s] is only valid on a method that returns a [%s] or its subclass. "
-                            + "[%s] does not fulfill this requirement.", annotationClass.getName(), List.class.getName(), method.toString()));
-        }
-    }
+	protected Object getResult(final Object result) {
+		//System.out.println(result.getClass().getClassLoader());
+		//System.out.println(PertinentNegativeNull.class.getClassLoader());
+		//System.out.println(result instanceof PertinentNegativeNull);
+		return (result instanceof PertinentNegativeNull) ? null : result;
+	}
 
-    protected boolean verifyTypeIsList(final Class<?> clazz) {
-        return List.class.isAssignableFrom(clazz);
-    }
+	protected void verifyReturnTypeIsList(final Method method, final Class<?> annotationClass) {
+		if (!verifyTypeIsList(method.getReturnType())) {
+			throw new InvalidAnnotationException(String.format(
+					"The annotation [%s] is only valid on a method that returns a [%s] or its subclass. "
+							+ "[%s] does not fulfill this requirement.",
+					annotationClass.getName(), List.class.getName(), method.toString()));
+		}
+	}
 
-    protected void verifyReturnTypeIsNoVoid(final Method method, final Class<?> annotationClass) {
-        if (method.getReturnType().equals(void.class)) {
-            throw new InvalidParameterException(String.format("Annotation [%s] is defined on void method  [%s]", annotationClass,
-                    method.getName()));
-        }
-    }
+	protected boolean verifyTypeIsList(final Class<?> clazz) {
+		return List.class.isAssignableFrom(clazz);
+	}
 
-    protected SerializationType getSerializationType(final Method method) {
-        Serialization serialization = method.getAnnotation(Serialization.class);
-        if (serialization != null) {
-            return serialization.value();
-        }
+	protected void verifyReturnTypeIsNoVoid(final Method method, final Class<?> annotationClass) {
+		if (method.getReturnType().equals(void.class)) {
+			throw new InvalidParameterException(String.format("Annotation [%s] is defined on void method  [%s]",
+					annotationClass, method.getName()));
+		}
+	}
 
-        serialization = method.getDeclaringClass().getAnnotation(Serialization.class);
-        if (serialization != null) {
-            return serialization.value();
-        }
+	protected SerializationType getSerializationType(final Method method) {
+		Serialization serialization = method.getAnnotation(Serialization.class);
+		if (serialization != null) {
+			return serialization.value();
+		}
 
-        return null;
-    }
+		serialization = method.getDeclaringClass().getAnnotation(Serialization.class);
+		if (serialization != null) {
+			return serialization.value();
+		}
 
-    protected Logger getLogger() {
-        return LOG;
-    }
+		return null;
+	}
 
-    protected void addCache(final Cache cache) {
-        if (cache == null) {
-            getLogger().warn("One of the cache is null");
-            return;
-        }
+	protected Logger getLogger() {
+		return LOG;
+	}
 
-        if (caches.put(cache.getName(), cache) != null) {
-            String errorMsg = "There are two or more caches with the same name '" + cache.getName() + "'";
-            getLogger().error(errorMsg);
-            throw new IllegalStateException(errorMsg);
-        }
+	protected void addCache(final Cache cache) {
+		if (cache == null) {
+			getLogger().warn("One of the cache is null");
+			return;
+		}
 
-        for (String alias : cache.getAliases()) {
-            if (caches.containsKey(alias)) {
-                String errorMsg = String.format("The cache with name '%s' uses alias '%s' already defined by cache with name '%s'",
-                        cache.getName(), alias, caches.get(alias).getName());
-                getLogger().error(errorMsg);
-                throw new IllegalStateException(errorMsg);
-            } else {
-                caches.put(alias, cache);
-            }
-        }
-    }
+		if (caches.put(cache.getName(), cache) != null) {
+			String errorMsg = "There are two or more caches with the same name '" + cache.getName() + "'";
+			getLogger().error(errorMsg);
+			throw new IllegalStateException(errorMsg);
+		}
 
-    private Method findMethodFromTargetGivenNameAndParams(final Object target, final String name, final Class<?>[] parameters)
-            throws NoSuchMethodException {
-        Method method = target.getClass().getMethod(name, parameters);
-        getLogger().debug("Method to cache: {}", method);
+		for (String alias : cache.getAliases()) {
+			if (caches.containsKey(alias)) {
+				String errorMsg = String.format(
+						"The cache with name '%s' uses alias '%s' already defined by cache with name '%s'",
+						cache.getName(), alias, caches.get(alias).getName());
+				getLogger().error(errorMsg);
+				throw new IllegalStateException(errorMsg);
+			} else {
+				caches.put(alias, cache);
+			}
+		}
+	}
 
-        return method;
-    }
+	private Method findMethodFromTargetGivenNameAndParams(final Object target, final String name,
+			final Class<?>[] parameters) throws NoSuchMethodException {
+		Method method = target.getClass().getMethod(name, parameters);
+		getLogger().debug("Method to cache: {}", method);
+		return method;
+	}
 
 }
